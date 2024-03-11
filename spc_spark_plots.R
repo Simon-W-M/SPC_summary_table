@@ -44,7 +44,7 @@ plot_spc_spark <- function (df, met) {
     filter (metric == met)
   
   # identify a single value for target
-  targ <- max(dat$target)  
+  targ <- dat$target[1]  
   
   # if 9999 entered as target don't plot plot target
   tg <- if (targ == 9999) {ptd_target()}  else {ptd_target(targ) }
@@ -72,6 +72,9 @@ plot_spc_spark <- function (df, met) {
   
   # max value of metric
   max_s <- max(dat$value)
+  
+  # mean of metric
+  mean_s <- spc_dat$mean[1]
 
   # find the upl, lpl and mean
   cl_mean <- c(spc_dat$upl[1], 
@@ -97,18 +100,34 @@ plot_spc_spark <- function (df, met) {
   # put the current, min , max and target into vector
   curr_min_max <- (c(curr, 
                      min_s, 
+                     mean_s,
                      max_s,
                      targpos))
+  
+
+  
+  curr_min_max_pos <- (c(curr, 
+                     min_s, 
+                     max_s,
+                     targpos,
+                     spc_dat$upl[1],
+                     spc_dat$lpl[1],
+                     targ))
+  
+  minpos <- min(curr_min_max_pos, na.rm = T)
+  maxpos <- max(curr_min_max_pos, na.rm = T)
+  
+  curr_min_max_pos <- seq(minpos, maxpos, length.out = 5)
   
   # create vector of labels
   mix <- c(paste0(format(curr_per, "%b %y"),':'), 
            'Min:', 
+           'Mean:',
            'Max:', 
            targlab)
   
   # create dataframe for right hand details
   rhd <- data.frame(curr_min_max, mix)
-  
   
   text_size <- 16
   
@@ -116,14 +135,14 @@ plot_spc_spark <- function (df, met) {
   plot <- p  + 
     geom_text_repel(data = rhd, 
                     aes(x = as.POSIXct(curr_per %m+% months(16)), 
-                    y = curr_min_max), 
+                    y = curr_min_max_pos), 
                     label = paste(mix, 
                                   prettyNum(curr_min_max, 
-                                            big.mark = ",")), 
+                                            big.mark = ",", digits = 1)), 
                     size = text_size,
                     box.padding	= 0.4) +
     geom_text_repel(data = cl_dat, 
-                    aes(x = as.POSIXct(min(dat$period) %m-% months(4)), 
+                    aes(x = as.POSIXct(min(dat$period) %m-% months(6)), 
                         y = cl_mean), 
                         label = cl_lab, 
                         size = text_size) +
