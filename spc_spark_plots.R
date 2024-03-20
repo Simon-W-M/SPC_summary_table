@@ -8,23 +8,47 @@ library(purrr)
 library(glue)
 
 # create dataset
-dat <- ae_attendances
 
 # note for this example I am using the org_codes to be a metric type
 
 # Filter the data a bit, add a target and rename attendance to value
 # can specify target to 9999 to be no target
-dat <- dat %>%
-  filter(org_code %in% c('RF4', 'RQM'),
+dat <- ae_attendances |>
+  filter(org_code %in% c('R1K', 'RJ2'),
          period > '2017-10-01',
          type %in% c('1')) |>
-  mutate(target = 20000,
-         imp = 'increase') |>
+  mutate(target = if_else(org_code == 'R1K', 9999, 20000),
+         imp = 'increase',
+         perc = FALSE) |>
   select (period,
           metric = org_code,
           value = attendances,
           imp,
-          target)
+          target,
+          perc)
+
+# have made some with percentages just for fun
+dat2 <- ae_attendances |>
+  filter(org_code %in% c('RF4', 'RQM'),
+         period > '2017-10-01',
+         type %in% c('1')) |>
+  mutate(target = if_else(org_code == 'RF4', 9999, 0.05),
+         imp = 'increase',
+         value = (breaches / attendances) * 100,
+         perc = TRUE) |>
+  select (period,
+          metric = org_code,
+          value,
+          imp,
+          target,
+          perc)
+
+dat <- rbind(dat, dat2)
+
+# target and improvement direction are arbitrary in this example.  
+# This kind of meta data could be saved in a separate dataframe and added
+# in a separate process
+
 
 # create a sparkline SPC plot
 plot_spc_spark <- function (df, met) {
@@ -38,7 +62,7 @@ plot_spc_spark <- function (df, met) {
 #  @returns {ggplot} A ggplot object containing the sparkline SPC plot. 
 
 # filter the data to the metric - this assumes each metric has unique name
-# may need to concatinte metric and team/ward/icb if running same metric 
+# may need to concatenate metric and team/ward/icb if running same metric 
 # on different levels
   dat <- df |>
     filter (metric == met)
@@ -48,6 +72,9 @@ plot_spc_spark <- function (df, met) {
   
   # if 9999 entered as target don't plot plot target
   tg <- if (targ == 9999) {ptd_target()}  else {ptd_target(targ) }
+  
+  # check if percentage measure
+  perc <- dat$perc[1]
   
   # run spc rules over data and save as dataframe
   spc_dat <- ptd_spc(dat,
@@ -59,7 +86,8 @@ plot_spc_spark <- function (df, met) {
   # create the basic SPC plot
   p <-ptd_create_ggplot(spc_dat,
                         icons_position = 'none',
-                        point_size = 8)
+                        point_size = 8,
+                        percentage_y_axis = perc)
  
   # find the latest value of metric
   curr <- dat$value[dat$period == max(dat$period)] 
@@ -84,7 +112,7 @@ plot_spc_spark <- function (df, met) {
   # give them lables
   cl_lab <- c('UCL', 'LCL', 'Mean')
   
-  # addthem into dataframe
+  # add them into dataframe
   cl_dat <- data.frame(cl_mean, cl_lab)
   
   # make a position to to the labels to the left and right 
@@ -104,27 +132,36 @@ plot_spc_spark <- function (df, met) {
                      max_s,
                      targpos))
   
-
+  # remove target from the vector if no target
+  if (targ == 9999) {curr_min_max <- curr_min_max[1:4]}
   
+  # create a vector of all the positions
   curr_min_max_pos <- (c(curr, 
                      min_s, 
                      max_s,
                      targpos,
                      spc_dat$upl[1],
                      spc_dat$lpl[1],
-                     targ))
+                     targpos))
   
+  # finds the max and min of the positions
   minpos <- min(curr_min_max_pos, na.rm = T)
   maxpos <- max(curr_min_max_pos, na.rm = T)
   
-  curr_min_max_pos <- seq(minpos, maxpos, length.out = 5)
+  # create a new sequence to spread the label positions 
+  #at intervals between the min and max
+  curr_min_max_pos <-seq(minpos, maxpos, length.out = 7)[2:6]
+  if (targ == 9999) {curr_min_max_pos <- seq(minpos, maxpos, length.out = 6)[2:5]}
+
   
-  # create vector of labels
+  # create vector of labels,
   mix <- c(paste0(format(curr_per, "%b %y"),':'), 
            'Min:', 
            'Mean:',
            'Max:', 
            targlab)
+  
+  if (targ == 9999) {mix <- mix[1:4]}
   
   # create dataframe for right hand details
   rhd <- data.frame(curr_min_max, mix)
@@ -133,13 +170,18 @@ plot_spc_spark <- function (df, met) {
   
   # format the plot
   plot <- p  + 
-    geom_text_repel(data = rhd, 
+    geom_text(data = rhd, 
                     aes(x = as.POSIXct(curr_per %m+% months(16)), 
                     y = curr_min_max_pos), 
-                    label = paste(mix, 
-                                  prettyNum(curr_min_max, 
-                                            big.mark = ",", digits = 1)), 
+                    label = paste0(mix,
+                                   ' ',
+                                   prettyNum(curr_min_max, 
+                                             format = 'f',
+                                             big.mark = ",", 
+                                             digits = 2),
+                                   if_else (perc==TRUE, '%', '')), 
                     size = text_size,
+                    hjust = 'right',
                     box.padding	= 0.4) +
     geom_text_repel(data = cl_dat, 
                     aes(x = as.POSIXct(min(dat$period) %m-% months(6)), 
@@ -220,12 +262,14 @@ spc_icons <- function (df, met, assu_or_var) {
                         .default = 'CCV') # common case
   
   # assurance icons
-  icon_assu <- case_when(tg == 9999 ~ 'BLANK', # no target
+  icon_assu <- case_when(#targ == 9999 ~ 'BLANK', # no target
                          upl <= tg & imp == 'increase' ~ 'CF', # consist fail
                          lpl >= tg & imp == 'decrease' ~ 'CF', # consist fail
                          upl <= tg & imp == 'decrease' ~ 'CP', # consist pass
                          lpl >= tg & imp == 'increase' ~ 'CP', # consist pass
                          .default = 'CV') # common variation
+  
+  if (targ == 9999) {icon_assu <- 'BLANK'}
   
   # commentary
   narr_assur <-case_when (icon_assu == "CV" ~ "This process will not consistently achieve or fail the target.", 
@@ -253,9 +297,9 @@ spc_icons <- function (df, met, assu_or_var) {
 #spc_icons(dat, 'RQM', 'assurance')
 #spc_icons(dat, 'RQM','variation')
 
-# thats the functions set up, now want to fun functions across each of the metrics
+# thats the functions set up, now want to run functions across each of the metrics
 
-# make a list of the metrics
+# make a list of the metrics (as char as they were factors)
 metrics_list <- as.character(unique(dat$metric))
 
 # make spc spark plots for each of the metrics
@@ -269,13 +313,13 @@ spc_ic_ass  <- map(.x = metrics_list,
                                    met = .x,
                                    assu_or_var = 'assurance'))
 
-# calulate variation icon for each metric
+# calculate variation icon for each metric
 spc_ic_var  <- map(.x = metrics_list, 
                    .f = ~spc_icons(df = dat, 
                                    met = .x,
                                    assu_or_var = 'variation'))
 
-# calulate variation icon for each metric
+# calculate commentary for each metric
 spc_comm <- map(.x = metrics_list, 
                 .f = ~spc_icons(df = dat, 
                                 met = .x,
@@ -288,8 +332,15 @@ dat_f <- dat |>
          plots = spark_plots,
          ic_assu = spc_ic_ass,
          ic_var = spc_ic_var,
-         commentary = spc_comm) |>
-  select(period, metric, value, plots, ic_assu, ic_var, commentary) 
+         commentary = spc_comm,
+         value = if_else(perc == TRUE, paste0(round(value,1), '%'), paste(value))) |>
+  select(period, 
+         metric, 
+         value, 
+         plots, 
+         ic_assu, 
+         ic_var, 
+         commentary) 
 
 tb <- dat_f |>
   gt()
@@ -304,20 +355,29 @@ tb <- tb %>%
       )
     }
   ) |>
-  text_transform(
-    locations = cells_body(c(ic_assu, ic_var)),
-    fn = function(x) {
-      # loop over the elements of the column
-      map_chr(x, ~ local_image(
-        filename = paste0(.x, ".png"),
-        height = 40
-      ))
-    }
-  ) |>
+   text_transform(
+     locations = cells_body(c(ic_assu, ic_var)),
+     fn = function(x) {
+       # loop over the elements of the column
+       map_chr(x, ~ local_image(
+         filename = paste0(.x, ".png"),
+         height = 40
+       ))
+     }
+   ) |>
   cols_align(
     align = "left",
     columns = commentary) |>
   fmt_markdown(
-    columns = commentary)
+    columns = commentary) |>
+  cols_label(
+    period = "Period",
+    metric = "Metric Name",
+    value = "Value",
+    plots = "Sparky mc line!!!!",
+    ic_assu = "Assurance",
+    ic_var = "Variation",
+    commentary = "Commentary"
+  ) 
 
 tb
