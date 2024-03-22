@@ -14,8 +14,8 @@ library(glue)
 # Filter the data a bit, add a target and rename attendance to value
 # can specify target to 9999 to be no target
 dat <- ae_attendances |>
-  filter(org_code %in% c('R1K', 'RJ2'),
-         period > '2017-10-01',
+  filter(org_code %in% c('R1K', 'RJ2', 'RA6'),
+         period > '2017-10-01' & period < '2019-02-01',
          type %in% c('1')) |>
   mutate(target = if_else(org_code == 'R1K', 9999, 14000),
          imp = 'increase',
@@ -30,7 +30,7 @@ dat <- ae_attendances |>
 # have made some with percentages just for fun and testing
 dat2 <- ae_attendances |>
   filter(org_code %in% c('RF4', 'RQM'),
-         period > '2017-10-01',
+         period > '2017-10-01' & period < '2019-02-01',
          type %in% c('1')) |>
   mutate(target = if_else(org_code == 'RF4', 9999, 4.0),
          imp = if_else(org_code == 'RQM', 'decrease', 'increase'),
@@ -357,7 +357,7 @@ tb <- tb %>%
   text_transform(
     locations = cells_body(columns = plots),
     fn = function(x) {
-      purrr::map(
+      map(
         dat_f$plots, ggplot_image,
         height = px(80), aspect_ratio = 2.5
       )
@@ -389,3 +389,19 @@ tb <- tb %>%
   ) 
 
 tb
+
+# to do
+
+# table assumes all data is at same period 
+#    - need to group and find max date by group
+# have not added icons for neutral improvement
+# have not added support for trajectories
+# have not added support for rebasing SPC
+# hardcoded to months at moment 
+#   - need to make that dynamic
+
+
+
+
+
+
