@@ -1,8 +1,8 @@
-library(ggrepel)
+
 library(tidyverse)
 library(NHSRdatasets)
 library(NHSRplotthedots)
-library (gt)
+library(gt)
 library(gtExtras)
 library(purrr)
 library(glue)
@@ -17,7 +17,7 @@ dat <- ae_attendances |>
   filter(org_code %in% c('R1K', 'RJ2'),
          period > '2017-10-01',
          type %in% c('1')) |>
-  mutate(target = if_else(org_code == 'R1K', 9999, 20000),
+  mutate(target = if_else(org_code == 'R1K', 9999, 14000),
          imp = 'increase',
          perc = FALSE) |>
   select (period,
@@ -27,13 +27,13 @@ dat <- ae_attendances |>
           target,
           perc)
 
-# have made some with percentages just for fun
+# have made some with percentages just for fun and testing
 dat2 <- ae_attendances |>
   filter(org_code %in% c('RF4', 'RQM'),
          period > '2017-10-01',
          type %in% c('1')) |>
-  mutate(target = if_else(org_code == 'RF4', 9999, 0.05),
-         imp = 'increase',
+  mutate(target = if_else(org_code == 'RF4', 9999, 4.0),
+         imp = if_else(org_code == 'RQM', 'decrease', 'increase'),
          value = (breaches / attendances) * 100,
          perc = TRUE) |>
   select (period,
@@ -43,11 +43,13 @@ dat2 <- ae_attendances |>
           target,
           perc)
 
-dat <- rbind(dat, dat2)
+dat <- rbind(dat, dat2) |>
+  arrange(metric,
+          period)
 
 # target and improvement direction are arbitrary in this example.  
 # This kind of meta data could be saved in a separate dataframe and added
-# in a separate process
+# in a separate process via a join
 
 
 # create a sparkline SPC plot
@@ -71,7 +73,7 @@ plot_spc_spark <- function (df, met) {
   targ <- dat$target[1]  
   
   # if 9999 entered as target don't plot plot target
-  tg <- if (targ == 9999) {ptd_target()}  else {ptd_target(targ) }
+  tg <- if (targ == 9999) {ptd_target()} else {ptd_target(targ)}
   
   # check if percentage measure
   perc <- dat$perc[1]
@@ -81,7 +83,7 @@ plot_spc_spark <- function (df, met) {
                      value_field = value,
                      date_field = period,
                      target = tg,
-                     improvement_direction = unique(dat$imp))
+                     improvement_direction = dat$imp[1])
   
   # create the basic SPC plot
   p <-ptd_create_ggplot(spc_dat,
@@ -90,10 +92,10 @@ plot_spc_spark <- function (df, met) {
                         percentage_y_axis = perc)
  
   # find the latest value of metric
-  curr <- dat$value[dat$period == max(dat$period)] 
+  curr_value <- dat$value[dat$period == max(dat$period)] 
   
   # find current month of value
-  curr_per <- dat$period[dat$period == max(dat$period)] 
+  curr_period <- dat$period[dat$period == max(dat$period)] 
   
   # min value of metric
   min_s <- min(dat$value) 
@@ -119,14 +121,14 @@ plot_spc_spark <- function (df, met) {
   # of the chart, their positions determined by dates
   # assumes monthly data!
   min_d <- as.POSIXct.Date(min(dat$period) %m-% months(4))
-  max_d <- as.POSIXct.Date(curr_per %m+% months(16))
+  max_d <- as.POSIXct.Date(curr_period %m+% months(16))
   
   # set the target position and label
   targpos <- if_else(targ == 9999, NA, targ)
   targlab <- if_else(targ == 9999, NA, 'Target:')
   
   # put the current, min , max and target into vector
-  curr_min_max <- (c(curr, 
+  curr_min_max <- (c(curr_value, 
                      min_s, 
                      mean_s,
                      max_s,
@@ -136,7 +138,7 @@ plot_spc_spark <- function (df, met) {
   if (targ == 9999) {curr_min_max <- curr_min_max[1:4]}
   
   # create a vector of all the positions
-  curr_min_max_pos <- (c(curr, 
+  curr_min_max_pos <- (c(curr_value, 
                      min_s, 
                      max_s,
                      targpos,
@@ -145,17 +147,16 @@ plot_spc_spark <- function (df, met) {
                      targpos))
   
   # finds the max and min of the positions
-  minpos <- min(curr_min_max_pos, na.rm = T)
-  maxpos <- max(curr_min_max_pos, na.rm = T)
+  minpos <- min(curr_min_max_pos, na.rm = T) - (min(curr_min_max_pos, na.rm = T)/10)
+  maxpos <- max(curr_min_max_pos, na.rm = T) + (max(curr_min_max_pos, na.rm = T)/10)
   
   # create a new sequence to spread the label positions 
   #at intervals between the min and max
-  curr_min_max_pos <-seq(minpos, maxpos, length.out = 7)[2:6]
-  if (targ == 9999) {curr_min_max_pos <- seq(minpos, maxpos, length.out = 6)[2:5]}
+  curr_min_max_pos <-seq(minpos, maxpos, length.out = 5)
+  if (targ == 9999) {curr_min_max_pos <- seq(minpos, maxpos, length.out = 5)[1:4]}
 
-  
   # create vector of labels,
-  mix <- c(paste0(format(curr_per, "%b %y"),':'), 
+  mix <- c(paste0(format(curr_period, "%b %y"),':'), 
            'Min:', 
            'Mean:',
            'Max:', 
@@ -166,12 +167,12 @@ plot_spc_spark <- function (df, met) {
   # create dataframe for right hand details
   rhd <- data.frame(curr_min_max, mix)
   
-  text_size <- 16
+  text_size <- 18
   
-  # format the plot
+  # format the plot with the additional labels
   plot <- p  + 
     geom_text(data = rhd, 
-                    aes(x = as.POSIXct(curr_per %m+% months(16)), 
+                    aes(x = as.POSIXct(curr_period %m+% months(18)), 
                     y = curr_min_max_pos), 
                     label = paste0(mix,
                                    ' ',
@@ -181,20 +182,22 @@ plot_spc_spark <- function (df, met) {
                                              digits = 2),
                                    if_else (perc==TRUE, '%', '')), 
                     size = text_size,
-                    hjust = 'right',
-                    box.padding	= 0.4) +
-    geom_text_repel(data = cl_dat, 
-                    aes(x = as.POSIXct(min(dat$period) %m-% months(6)), 
+                    hjust = 'right') +
+    geom_text(data = cl_dat, 
+                    aes(x = as.POSIXct(min(dat$period) %m-% months(3)), 
                         y = cl_mean), 
                         label = cl_lab, 
+                        hjust = 'right',
                         size = text_size) +
     theme_void() + 
     theme(legend.position="none") + 
     theme(title=element_blank()) +
     theme(axis.title.x = element_text(size = text_size *3)) + 
     xlab('Months                    ') +
-    coord_cartesian(xlim = c(min_d, 
+    coord_cartesian(xlim = c(min_d  %m-% months(4), 
                              max_d),
+                    ylim = c(minpos - (minpos/10), 
+                             maxpos + (maxpos/10)),
                     expand = TRUE) 
   
   plot
@@ -248,7 +251,7 @@ spc_icons <- function (df, met, assu_or_var) {
   lpl <- spc_dat$lpl[1]
   latest_pt <- spc_dat$point_type[spc_dat$x == max(spc_dat$x, na.rm = TRUE)]
   
-  # calulate which icon to use
+  # calculate which icon to use
   
   # variation icons
   icon_var <- case_when(latest_pt == 'special_cause_improvement' & 
@@ -297,7 +300,7 @@ spc_icons <- function (df, met, assu_or_var) {
 #spc_icons(dat, 'RQM', 'assurance')
 #spc_icons(dat, 'RQM','variation')
 
-# thats the functions set up, now want to run functions across each of the metrics
+# that's the functions set up, now want to run functions across each of the metrics
 
 # make a list of the metrics (as char as they were factors)
 metrics_list <- as.character(unique(dat$metric))
@@ -333,7 +336,12 @@ dat_f <- dat |>
          ic_assu = spc_ic_ass,
          ic_var = spc_ic_var,
          commentary = spc_comm,
-         value = if_else(perc == TRUE, paste0(round(value,1), '%'), paste(value))) |>
+         value = if_else(perc == TRUE, 
+                         paste0(round(value,1), '%'), 
+                         paste(prettyNum(value, 
+                                         format = 'f',
+                                         big.mark = ",", 
+                                         digits = 2)))) |>
   select(period, 
          metric, 
          value, 
