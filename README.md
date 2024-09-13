@@ -9,3 +9,8 @@ Have added support for percentages.
 
 Happy for any thoughts or contributions.
 
+##  AI Assistance
+
+If you want AI assistance for this repo try this link and ask it any questions
+
+https://hf.co/chat/assistant/66e49ad3185cd7835e3f3e8f
