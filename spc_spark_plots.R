@@ -54,18 +54,18 @@ dat <- rbind(dat, dat2) |>
 
 # create a sparkline SPC plot
 plot_spc_spark <- function (df, met) {
-#  @function plot_spc_spark
-#  This function takes a dataframe (df) and a metric name (met) as 
-#  input and creates a sparkline SPC plot.
-#  The sparkline SPC plot displays the control limits (UCL and LCL) for 
-#  the metric, as well as the target value and the most recent data points.
-#  @param {data.frame} df The dataframe containing the data for the SPC plot.
-#  @param {string} met The name of the metric to plot.
-#  @returns {ggplot} A ggplot object containing the sparkline SPC plot. 
-
-# filter the data to the metric - this assumes each metric has unique name
-# may need to concatenate metric and team/ward/icb if running same metric 
-# on different levels
+  #  @function plot_spc_spark
+  #  This function takes a dataframe (df) and a metric name (met) as 
+  #  input and creates a sparkline SPC plot.
+  #  The sparkline SPC plot displays the control limits (UCL and LCL) for 
+  #  the metric, as well as the target value and the most recent data points.
+  #  @param {data.frame} df The dataframe containing the data for the SPC plot.
+  #  @param {string} met The name of the metric to plot.
+  #  @returns {ggplot} A ggplot object containing the sparkline SPC plot. 
+  
+  # filter the data to the metric - this assumes each metric has unique name
+  # may need to concatenate metric and team/ward/icb if running same metric 
+  # on different levels
   dat <- df |>
     filter (metric == met)
   
@@ -90,7 +90,7 @@ plot_spc_spark <- function (df, met) {
                         icons_position = 'none',
                         point_size = 8,
                         percentage_y_axis = perc)
- 
+  
   # find the latest value of metric
   curr_value <- dat$value[dat$period == max(dat$period)] 
   
@@ -104,12 +104,12 @@ plot_spc_spark <- function (df, met) {
   max_s <- max(dat$value)
   
   # mean of metric
-  mean_s <- spc_dat$mean[1]
-
+  mean_s <- spc_dat$mean_col[1]
+  
   # find the upl, lpl and mean
   cl_mean <- c(spc_dat$upl[1], 
                spc_dat$lpl[1], 
-               spc_dat$mean[1])
+               spc_dat$mean_col[1])
   
   # give them lables
   cl_lab <- c('UCL', 'LCL', 'Mean')
@@ -139,12 +139,12 @@ plot_spc_spark <- function (df, met) {
   
   # create a vector of all the positions
   curr_min_max_pos <- (c(curr_value, 
-                     min_s, 
-                     max_s,
-                     targpos,
-                     spc_dat$upl[1],
-                     spc_dat$lpl[1],
-                     targpos))
+                         min_s, 
+                         max_s,
+                         targpos,
+                         spc_dat$upl[1],
+                         spc_dat$lpl[1],
+                         targpos))
   
   # finds the max and min of the positions
   minpos <- min(curr_min_max_pos, na.rm = T) - (min(curr_min_max_pos, na.rm = T)/10)
@@ -154,7 +154,7 @@ plot_spc_spark <- function (df, met) {
   #at intervals between the min and max
   curr_min_max_pos <-seq(minpos, maxpos, length.out = 5)
   if (targ == 9999) {curr_min_max_pos <- seq(minpos, maxpos, length.out = 5)[1:4]}
-
+  
   # create vector of labels,
   mix <- c(paste0(format(curr_period, "%b %y"),':'), 
            'Min:', 
@@ -172,23 +172,23 @@ plot_spc_spark <- function (df, met) {
   # format the plot with the additional labels
   plot <- p  + 
     geom_text(data = rhd, 
-                    aes(x = as.POSIXct(curr_period %m+% months(18)), 
-                    y = curr_min_max_pos), 
-                    label = paste0(mix,
-                                   ' ',
-                                   prettyNum(curr_min_max, 
-                                             format = 'f',
-                                             big.mark = ",", 
-                                             digits = 2),
-                                   if_else (perc==TRUE, '%', '')), 
-                    size = text_size,
-                    hjust = 'right') +
+              aes(x = as.POSIXct(curr_period %m+% months(18)), 
+                  y = curr_min_max_pos), 
+              label = paste0(mix,
+                             ' ',
+                             prettyNum(curr_min_max, 
+                                       format = 'f',
+                                       big.mark = ",", 
+                                       digits = 2),
+                             if_else (perc==TRUE, '%', '')), 
+              size = text_size,
+              hjust = 'right') +
     geom_text(data = cl_dat, 
-                    aes(x = as.POSIXct(min(dat$period) %m-% months(3)), 
-                        y = cl_mean), 
-                        label = cl_lab, 
-                        hjust = 'right',
-                        size = text_size) +
+              aes(x = as.POSIXct(min(dat$period) %m-% months(3)), 
+                  y = cl_mean), 
+              label = cl_lab, 
+              hjust = 'right',
+              size = text_size) +
     theme_void() + 
     theme(legend.position="none") + 
     theme(title=element_blank()) +
@@ -226,7 +226,7 @@ spc_icons <- function (df, met, assu_or_var) {
   #' - CP: Consistent Pass
   #' - CV: Common Variation
   #' - BLANK: A blank icon
-
+  
   # filter data to just the metric
   dat <- df |>
     filter (metric == met)
@@ -266,11 +266,11 @@ spc_icons <- function (df, met, assu_or_var) {
   
   # assurance icons
   icon_assu <- case_when(#targ == 9999 ~ 'BLANK', # no target
-                         upl <= tg & imp == 'increase' ~ 'CF', # consist fail
-                         lpl >= tg & imp == 'decrease' ~ 'CF', # consist fail
-                         upl <= tg & imp == 'decrease' ~ 'CP', # consist pass
-                         lpl >= tg & imp == 'increase' ~ 'CP', # consist pass
-                         .default = 'CV') # common variation
+    upl <= tg & imp == 'increase' ~ 'CF', # consist fail
+    lpl >= tg & imp == 'decrease' ~ 'CF', # consist fail
+    upl <= tg & imp == 'decrease' ~ 'CP', # consist pass
+    lpl >= tg & imp == 'increase' ~ 'CP', # consist pass
+    .default = 'CV') # common variation
   
   if (targ == 9999) {icon_assu <- 'BLANK'}
   
@@ -307,8 +307,8 @@ metrics_list <- as.character(unique(dat$metric))
 
 # make spc spark plots for each of the metrics
 spark_plots <- map(.x = metrics_list, 
-                          .f = ~plot_spc_spark(df = dat, 
-                                               met = .x))
+                   .f = ~plot_spc_spark(df = dat, 
+                                        met = .x))
 
 # calculate assurance icon for each metric
 spc_ic_ass  <- map(.x = metrics_list, 
@@ -363,16 +363,16 @@ tb <- tb %>%
       )
     }
   ) |>
-   text_transform(
-     locations = cells_body(c(ic_assu, ic_var)),
-     fn = function(x) {
-       # loop over the elements of the column
-       map_chr(x, ~ local_image(
-         filename = paste0(.x, ".png"),
-         height = 40
-       ))
-     }
-   ) |>
+  text_transform(
+    locations = cells_body(c(ic_assu, ic_var)),
+    fn = function(x) {
+      # loop over the elements of the column
+      map_chr(x, ~ local_image(
+        filename = paste0(.x, ".png"),
+        height = 40
+      ))
+    }
+  ) |>
   cols_align(
     align = "left",
     columns = commentary) |>
